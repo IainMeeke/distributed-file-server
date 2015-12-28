@@ -48,13 +48,16 @@ class ThreadPool:
 
 
 
-class ChatServer:
+class DirectoryServer:
     """a chat server with several chat rooms"""
 
+    FILE_LOCATION_RESPONSE = "SERVER IP:{0}\nSERVER PORT:{1}\nFILE ID:{2}\n\n"
+    ADD_FILE_SUCCESS_RESPONSE = "FILE ADDED\n\n"
+    FAILURE_RESPONSE = "ERROR:{0}\n\n"
+    SERVER_ROOT = os.getcwd()
+
     def __init__(self, port, num_thread):
-        self.users_in_rooms = {}  # stores all roomid and the clients in those rooms {[RoomId : {[clientId:conn],{[clientId1:conn]}],.....]}
-        self.rooms = {}  # stores all rooms and their ids in the form {[room_id:room_name], ... }
-        self.users = {}  # keeps a list of all users who have used the chatserver in form [name:id]
+        self.file_locations = {"hello.txt":[HOST,443,"1.txt"]} #dictionary for all files = {file_path:[server ip, server port, file_id], file_name.....}
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.socket.bind((HOST, port))
@@ -64,6 +67,7 @@ class ChatServer:
         print 'succesful bind'
         # init a thread pool:
         self.pool = ThreadPool(num_thread, self)
+
 
     def listen(self):
         """loops for ever and puts new connections on the queue"""
@@ -83,85 +87,48 @@ class ChatServer:
                 os._exit(0)
             elif data.startswith("HELO") and data.endswith("\n"):
                 conn.sendall('{}IP:{}\nPort:{}\nStudentID:{}\n'.format(data, IP, PORT, STUDENT_ID))
-            elif data.startswith("JOIN_CHATROOM") and data.endswith("\n"):
-                self.joinRoom(data, conn)
-            elif data.startswith("LEAVE_CHATROOM") and data.endswith("\n"):
-                self.leaveRoom(data, conn)
-            elif data.startswith("CHAT") and data.endswith("\n"):
-                self.chat(data, conn)
-            elif data.startswith("DISCONNECT") and data.endswith("\n"):
-                self.disconnectUser(data, conn)
+            elif data.startswith("GET FILE") and data.endswith("\n"):
+                self.getFileLocation(conn,data)
 
-    def chat(self,data,conn):
-        """sends a message from a user to all other users in a given chatroom using sendMessageToRoom"""
-        text = data.splitlines()
-        room_id = int(text[0].split(":")[1])
-        client_name = text[2].split(":")[1]
-        message_from_client = text[3].split(":")[1]
-        message_to_send = "CHAT: {0}\nCLIENT_NAME: {1}\nMESSAGE: {2}\n\n".format(str(room_id),client_name,message_from_client)
-        self.sendMessageToRoom(message_to_send,room_id)
-
-
-    def disconnectUser(self,data,conn):
-        """sends a leave message to every room the given client is in and then terminates their connection"""
-        text = data.splitlines()
-        client_name = text[2].split(":")[1]
-        if client_name in self.users:
-            client_id = self.users[client_name]
-            room_keys = sorted(self.users_in_rooms.keys())
-            for room in room_keys:
-                if client_id in self.users_in_rooms[room]:
-                    room_leave_message = "LEAVE_CHATROOM: {0}\nJOIN_ID: {1} \nCLIENT_NAME: {2}\n\n".format(str(room),str(client_id),client_name)
-                    self.leaveRoom(room_leave_message)
-        conn = None
-
-
-    def leaveRoom(self,data, conn=None):
-        """sends a message to every user in the given room that the client has left and sends the client a confirmation message,unless
-            they are disconnecting"""
-        text = data.splitlines()
-        room_id = int(text[0].split(":")[1])
-        client_id = int(text[1].split(":")[1])
-        client_name = text[2].split(":")[1]
-        if conn: #when disconnecting this message is not sent
-            conn.sendall("LEFT_CHATROOM: {0}\nJOIN_ID: {1}\n".format(str(room_id),str(client_id)))
-        if client_id in self.users_in_rooms[room_id]:
-            room_leave_message = "CHAT: {0}\nCLIENT_NAME: {1}\nMESSAGE:{1} has left this chatroom.\n\n".format(str(room_id),client_name)
-            self.sendMessageToRoom(room_leave_message,room_id)
-            del self.users_in_rooms[room_id][client_id]
-
-    def joinRoom(self, data, conn):
-        """adds a user to a room and sends a message to everyone in that room to notify them
-            if the room does not exist then it is created"""
-        text = data.splitlines()
-        room_name = text[0].split(":")[1]
-        client_name = text[3].split(":")[1]
-        room_id = int(hashlib.md5(room_name).hexdigest(), 16)
-        client_id = int(hashlib.md5(client_name).hexdigest(), 16)
-        if client_id not in self.users:
-            self.users[client_name] = client_id
-        if room_id not in self.users_in_rooms:
-            self.users_in_rooms[room_id] = dict()
-            self.rooms[room_id] = room_name
-        if client_id in self.users_in_rooms[room_id]:
-            conn.sendall("ERROR_CODE: {0}\nERROR_DESCRIPTION: Client already in room".format(1))
+    def getFileLocation(self,conn,data):
+        """given a file path it wil return the server ip, port and the file id on the server
+        data should be in the form GET FILE:[file_path]\n\n"""
+        file_path = data.split(":")[1].strip()
+        response = ""
+        if file_path in self.file_locations:
+            file_location_data = self.file_locations[file_path]
+            server_ip = file_location_data[0]
+            server_port = file_location_data[1]
+            file_id = file_location_data[2]
+            response += self.FILE_LOCATION_RESPONSE.format(server_ip,server_port,file_id)
         else:
-            self.users_in_rooms[room_id][client_id] = conn
-            conn.sendall("JOINED_CHATROOM: {0}\nSERVER_IP: {1}\nPORT: {2}\nROOM_REF: {3}\nJOIN_ID: {4}\n".format(str(room_name), IP,
-                                                                                                        str(PORT),
-                                                                                                        str(room_id),
-                                                                                                        str(client_id)))
-            room_join_message = "CHAT: {0}\nCLIENT_NAME: {1}\nMESSAGE: {1} has joined this chatroom.\n\n".format(str(room_id),client_name)
-            self.sendMessageToRoom(room_join_message,room_id)
+            response += self.FAILURE_RESPONSE.format("file not found")
+        conn.sendall(response)
 
-    def sendMessageToRoom(self, message, room_id):
-        """sends a given message to all clients in a given chatroom"""
-        for users in self.users_in_rooms[room_id]:
-            self.users_in_rooms[room_id][users].sendall(message)
+    def addFileLocation(self,conn,data):
+        """given a file path and server details it adds it adds it to self.file_locations
+        data should be of the form FILE PATH :[file_path]\nSERVER IP:[server_ip]\nSERVER PORT:[Server_port]\nFILE ID:[file_id]\n\n"""
+        text = data.splitlines()
+        file_path = text[0].split(":")[1]
+        server_ip = text[1].split(":")[1]
+        server_port = text[2].split(":")[1]
+        file_id = text[3].split(":")[1]
+        response = ""
+        if file_path not in self.file_locations:
+            self.file_locaitons[file_path] = [server_ip,server_port,file_id]
+            response += self.ADD_FILE_SUCCESS_RESPONSE
+        else:
+            response+= self.ADD_FILE_FAILURE_RESPONSE.format("file already exists")
+        conn.sendall(response)
+
+
+
+
+
 
 
 def main():
-    server = ChatServer(PORT, POOL_SIZE)
+    server = DirectoryServer(PORT, POOL_SIZE)
     server.listen()
 
 

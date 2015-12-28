@@ -13,7 +13,7 @@ PORT = int(sys.argv[1])  # get the port from the command line arguments and conv
 IP = urlopen('http://ip.42.pl/raw').read()
 STUDENT_ID = '39e95f0efebef82542626bd6c3c28765726768817d45d38b2d911b26eb5d0b37'
 POOL_SIZE = 20
-SERVER_ROOT = os.getcwd()
+
 
 
 class Worker(Thread):
@@ -51,7 +51,8 @@ class ThreadPool:
 class FileServer:
     """a chat server with several chat rooms"""
 
-    DOWNLOAD_RESPONSE = "FILE_ID:{0}\nFILE_DATA:{1}:EOF\n"
+    DOWNLOAD_RESPONSE = "FILE_ID:{0}\nFILE_DATA:{1}:EOF\n\n"
+    SERVER_ROOT = os.getcwd()
 
     def __init__(self, port, num_thread):
         self.file_list = []
@@ -90,7 +91,7 @@ class FileServer:
 
     def __upload(self, data, conn):
         """given file data it overwrites or creates a new file with the given file id
-            data should be in the form: 'UPLOAD:[file_id]\nDATA:[text for file]\n"""
+            data should be in the form: 'UPLOAD:[file_id]\nDATA:[text for file]\n\n"""
         text = data.splitlines()
         file_id = text[0].split(":")[1]
         file_data = text[1].split(":")[1]
@@ -104,11 +105,11 @@ class FileServer:
 
     def __download(self, data, conn):
         """sends a file to a the client on conn.
-            data should be in the form: 'DOWNLOAD:[file_id]\n"""
+            data should be in the form: 'DOWNLOAD:[file_id]\n\n"""
         text = data.splitlines()
         file_id = text[0].split(":")[1]
 
-        file_path = os.path.join(SERVER_ROOT,file_id.strip())
+        file_path = os.path.join(self.SERVER_ROOT,file_id.strip())
         with open(file_path, 'r') as file:
             file_data = file.read()
             response = self.DOWNLOAD_RESPONSE.format(file_id, file_data)
