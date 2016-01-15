@@ -1,18 +1,21 @@
-import hashlib
+#!/usr/bin/python
+
+
 import socket
 import sys
 from threading import Thread
 from Queue import Queue
 import os
-from urllib2 import urlopen
 
+from urllib2 import urlopen
 
 HOST = ''  # host becomes any address the machine happens to have
 PORT = int(sys.argv[1])  # get the port from the command line arguments and convert to int
 IP = urlopen('http://ip.42.pl/raw').read()
 STUDENT_ID = '39e95f0efebef82542626bd6c3c28765726768817d45d38b2d911b26eb5d0b37'
 POOL_SIZE = 20
-LOCK_PORT = int(sys.argv[2])
+DIRECTORY_PORT = 8888
+
 
 class Worker(Thread):
     """individual thread that handles the clients requests"""
@@ -32,7 +35,6 @@ class Worker(Thread):
             self.tasks.task_done()
 
 
-
 class ThreadPool:
     """pool of worker threads all consuming tasks"""
 
@@ -47,21 +49,20 @@ class ThreadPool:
         self.tasks.put((conn))
 
 
-
-class DirectoryServer:
+class LockServer:
     """a chat server with several chat rooms"""
-    LOCK_SERVER_IP = ''
-    LOCK_SERVER_PORT = LOCK_PORT
-    FILE_LOCATION_RESPONSE = "SERVER IP:{0}\nSERVER PORT:{1}\nFILE ID:{2}\nLOCK_IP:"+LOCK_SERVER_IP+"\nLOCK_PORT:"+LOCK_SERVER_PORT+"\n\n"
-    ADD_FILE_SUCCESS_RESPONSE = "FILE ADDED\n\n"
-    FAILURE_RESPONSE = "ERROR:{0}\n\n"
-    SERVER_ROOT = os.getcwd()
 
+
+
+    DIRECTORY_SERVER_IP = ''
+    DIRECTORY_SERVER_PORT = DIRECTORY_PORT
+    SERVER_ROOT = os.getcwd()
+    LOCK_GRANTED = "LOCK_GRANTED\n\n"
+    LOCK_FAILURE = "LOCK_FAILED\n\n"
 
     def __init__(self, port, num_thread):
-        self.file_locations = {"hello.txt":[HOST,443,"1.txt"]} #dictionary for all files = {file_path:[server ip, server port, file_id], file_name.....}
+        self.locks = {}
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
         try:
             self.socket.bind((HOST, port))
         except socket.error, msg:
@@ -70,7 +71,6 @@ class DirectoryServer:
         print 'succesful bind'
         # init a thread pool:
         self.pool = ThreadPool(num_thread, self)
-
 
     def listen(self):
         """loops for ever and puts new connections on the queue"""
@@ -90,40 +90,31 @@ class DirectoryServer:
                 os._exit(0)
             elif data.startswith("HELO") and data.endswith("\n"):
                 conn.sendall('{}IP:{}\nPort:{}\nStudentID:{}\n'.format(data, IP, PORT, STUDENT_ID))
-            elif data.startswith("GET FILE") and data.endswith("\n"):
-                self.getFileLocation(conn,data)
+            elif data.startswith("GET_LOCK:") and data.endswith("\n"):
+                self.__getLock(data, conn)
+            elif data.startswith("FREE_LOCK") and data.endswith("\n"):
+                self.__freeLock(data, conn)
 
-    def getFileLocation(self,conn,data):
-        """given a file path it wil return the server ip, port and the file id on the server
-        data should be in the form GET FILE:[file_path]\n\n"""
-        file_path = data.split(":")[1].strip()
-        response = ""
-        if file_path in self.file_locations:
-            file_location_data = self.file_locations[file_path]
-            server_ip = file_location_data[0]
-            server_port = file_location_data[1]
-            file_id = file_location_data[2]
-            response += self.FILE_LOCATION_RESPONSE.format(server_ip,server_port,file_id)
-        else:
-            response += self.FAILURE_RESPONSE.format("file not found")
-        conn.sendall(response)
-
-    def addFileLocation(self,conn,data):
-        """given a file path and server details it adds it adds it to self.file_locations
-        data should be of the form FILE PATH :[file_path]\nSERVER IP:[server_ip]\nSERVER PORT:[Server_port]\nFILE ID:[file_id]\n\n"""
+    def __freeLock(self,data,conn):
         text = data.splitlines()
-        file_path = text[0].split(":")[1]
-        server_ip = text[1].split(":")[1]
-        server_port = text[2].split(":")[1]
-        file_id = text[3].split(":")[1]
-        response = ""
-        if file_path not in self.file_locations:
-            self.file_locaitons[file_path] = [server_ip,server_port,file_id]
-            response += self.ADD_FILE_SUCCESS_RESPONSE
-        else:
-            response+= self.ADD_FILE_FAILURE_RESPONSE.format("file already exists")
-        conn.sendall(response)
+        file_id = text[0].split(":")[1]
+        self.locks[file_id] = False
 
+    def __getLock(self,data,conn):
+        """checks if the requested file is locked, if so then it responds with failure message. Otherwise the lock is granted"""
+        text = data.splitlines()
+        file_id = text[0].split[":"][1]
+        response = ''
+        if file_id in self.locks and self.locks[file_id] == True:
+            if self.locks[file_id] == True:
+                response = self.LOCK_FAILURE
+            else:
+                response = self.LOCK_GRANTED
+                self.locks[file_id] = True
+        else:
+            self.locks[file_id] = True
+            response = self.LOCK_GRANTED
+        conn.sendall(response)
 
 
 
@@ -131,7 +122,7 @@ class DirectoryServer:
 
 
 def main():
-    server = DirectoryServer(PORT, POOL_SIZE)
+    server = LockServer(PORT, POOL_SIZE)
     server.listen()
 
 

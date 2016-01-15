@@ -13,7 +13,7 @@ PORT = int(sys.argv[1])  # get the port from the command line arguments and conv
 IP = urlopen('http://ip.42.pl/raw').read()
 STUDENT_ID = '39e95f0efebef82542626bd6c3c28765726768817d45d38b2d911b26eb5d0b37'
 POOL_SIZE = 20
-
+DIRECTORY_PORT = 8888
 
 
 class Worker(Thread):
@@ -52,6 +52,10 @@ class FileServer:
     """a chat server with several chat rooms"""
 
     DOWNLOAD_RESPONSE = "FILE_ID:{0}\nFILE_DATA:{1}:EOF\n\n"
+    MASTER_ID_REQUEST = "GET MASTER\n\n"
+
+    DIRECTORY_SERVER_IP = ''
+    DIRECTORY_SERVER_PORT = DIRECTORY_PORT
     SERVER_ROOT = os.getcwd()
 
     def __init__(self, port, num_thread):
@@ -114,6 +118,7 @@ class FileServer:
             file_data = file.read()
             response = self.DOWNLOAD_RESPONSE.format(file_id, file_data)
             conn.sendall(response)
+
 
 
 def main():
